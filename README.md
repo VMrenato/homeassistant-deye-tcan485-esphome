@@ -25,7 +25,8 @@ Deye's newer WiBLE plug-and-play loggers **block local access entirely** (port 8
 Should also work with the whole **SUN-3.6/5/6/7/8/10K-SG05LP1-EU** family (same register map). See [docs/hardware.md](docs/hardware.md) for details.
 
 <!-- PHOTO: inverter wiring compartment with the RS485/MODBUS port highlighted -->
-<!-- PHOTO: T-CAN485 board mounted with the 3-wire connection -->
+<img width="500" height="500" alt="image" src="https://github.com/user-attachments/assets/1caf2e5f-b1a7-4151-a5d9-4cbf86ff63a3" />
+
 
 ## Wiring
 
