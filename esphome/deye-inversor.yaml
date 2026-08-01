@@ -1,0 +1,549 @@
+# Deye SUN-6K-SG05LP1 via Modbus RTU — LilyGO T-CAN485
+#
+# Final validated config:
+#   UART: TX GPIO22 / RX GPIO21 (MAX13487E AutoDirection transceiver — no flow control)
+#   Enables (active HIGH): GPIO19 = RS485 EN, GPIO17 = RS485 SE, GPIO16 = 5V Booster
+#   A/B -> inverter RS485/MODBUS port (pin2=orange=A, pin1=white-orange=B)
+
+esphome:
+  name: deye-inversor
+  friendly_name: Deye Inversor
+
+esp32:
+  board: esp32dev
+
+logger:
+
+api:
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+uart:
+  id: mod_bus
+  tx_pin: GPIO22
+  rx_pin: GPIO21
+  baud_rate: 9600
+  stop_bits: 1
+  debug:
+    direction: BOTH
+    after:
+      timeout: 20ms
+    sequence:
+      - lambda: |-
+          if (direction == uart::UART_DIRECTION_RX) {
+            id(status_led).turn_on().set_rgb(0.0, 0.25, 0.0).perform();
+          } else {
+            id(status_led).turn_on().set_rgb(0.0, 0.0, 0.25).perform();
+          }
+          id(led_off_ts) = millis();
+
+modbus:
+  id: modbus1
+
+modbus_controller:
+  - id: deye
+    modbus_id: modbus1
+    address: 0x01
+    setup_priority: -10
+    update_interval: 5s
+    command_throttle: 50ms
+    offline_skip_updates: 3
+
+switch:
+  - platform: gpio
+    pin: GPIO19
+    name: "RS485 EN"
+    restore_mode: ALWAYS_ON
+  - platform: gpio
+    pin: GPIO17
+    name: "RS485 SE"
+    restore_mode: ALWAYS_ON
+  - platform: gpio
+    pin: GPIO16
+    name: "Booster 5V EN"
+    restore_mode: ALWAYS_ON
+
+sensor:
+  # ---------- Solar ----------
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    id: pv1_power
+    name: "Deye PV1 Power"
+    address: 186
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    id: pv2_power
+    name: "Deye PV2 Power"
+    address: 187
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+
+  - platform: template
+    id: pv_total_power
+    name: "Deye PV Total Power"
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+    update_interval: 10s
+    lambda: "return id(pv1_power).state + id(pv2_power).state;"
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye PV1 Voltage"
+    address: 109
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    skip_updates: 2
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye PV2 Voltage"
+    address: 111
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    skip_updates: 2
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Daily Production"
+    address: 108
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    skip_updates: 5
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    id: total_production_lo
+    address: 96
+    register_type: holding
+    value_type: U_WORD
+    internal: true
+    skip_updates: 5
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    id: total_production_hi
+    address: 97
+    register_type: holding
+    value_type: U_WORD
+    internal: true
+    skip_updates: 5
+
+  - platform: template
+    name: "Deye Total Production"
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 1
+    update_interval: 60s
+    lambda: "return (id(total_production_lo).state + id(total_production_hi).state * 65536.0) * 0.1;"
+
+  # ---------- Battery ----------
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Battery SOC"
+    address: 184
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "%"
+    device_class: battery
+    state_class: measurement
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Battery Power"
+    address: 190
+    register_type: holding
+    value_type: S_WORD
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Battery Voltage"
+    address: 183
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 2
+    filters:
+      - multiply: 0.01
+    skip_updates: 2
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Battery Current"
+    address: 191
+    register_type: holding
+    value_type: S_WORD
+    unit_of_measurement: "A"
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 2
+    filters:
+      - multiply: 0.01
+    skip_updates: 2
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Battery Temperature"
+    address: 182
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+      - offset: -100
+    skip_updates: 5
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Daily Battery Charge"
+    address: 70
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    skip_updates: 5
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Daily Battery Discharge"
+    address: 71
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    skip_updates: 5
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    id: total_battery_charge_lo
+    address: 72
+    register_type: holding
+    value_type: U_WORD
+    internal: true
+    skip_updates: 5
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    id: total_battery_charge_hi
+    address: 73
+    register_type: holding
+    value_type: U_WORD
+    internal: true
+    skip_updates: 5
+
+  - platform: template
+    name: "Deye Total Battery Charge"
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 1
+    update_interval: 60s
+    lambda: "return (id(total_battery_charge_lo).state + id(total_battery_charge_hi).state * 65536.0) * 0.1;"
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    id: total_battery_discharge_lo
+    address: 74
+    register_type: holding
+    value_type: U_WORD
+    internal: true
+    skip_updates: 5
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    id: total_battery_discharge_hi
+    address: 75
+    register_type: holding
+    value_type: U_WORD
+    internal: true
+    skip_updates: 5
+
+  - platform: template
+    name: "Deye Total Battery Discharge"
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 1
+    update_interval: 60s
+    lambda: "return (id(total_battery_discharge_lo).state + id(total_battery_discharge_hi).state * 65536.0) * 0.1;"
+
+  # ---------- Grid ----------
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Grid Power"
+    address: 169
+    register_type: holding
+    value_type: S_WORD
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Grid CT Power"
+    address: 172
+    register_type: holding
+    value_type: S_WORD
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Grid Voltage L1"
+    address: 150
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    skip_updates: 2
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Grid Frequency"
+    address: 79
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "Hz"
+    device_class: frequency
+    state_class: measurement
+    accuracy_decimals: 2
+    filters:
+      - multiply: 0.01
+    skip_updates: 5
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Daily Energy Bought"
+    address: 76
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    skip_updates: 5
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Daily Energy Sold"
+    address: 77
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    skip_updates: 5
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Total Grid Import"
+    address: 78
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 2
+    filters:
+      - multiply: 0.1
+    skip_updates: 5
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Total Grid Export"
+    address: 81
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 2
+    filters:
+      - multiply: 0.1
+    skip_updates: 5
+
+  # ---------- Load ----------
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Load Power"
+    address: 178
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Daily Load Consumption"
+    address: 84
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    skip_updates: 5
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    id: total_load_consumption_lo
+    address: 85
+    register_type: holding
+    value_type: U_WORD
+    internal: true
+    skip_updates: 5
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    id: total_load_consumption_hi
+    address: 86
+    register_type: holding
+    value_type: U_WORD
+    internal: true
+    skip_updates: 5
+
+  - platform: template
+    name: "Deye Total Load Consumption"
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 1
+    update_interval: 60s
+    lambda: "return (id(total_load_consumption_lo).state + id(total_load_consumption_hi).state * 65536.0) * 0.1;"
+
+  # ---------- Inverter ----------
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Inverter Power"
+    address: 175
+    register_type: holding
+    value_type: S_WORD
+    unit_of_measurement: "W"
+    device_class: power
+    state_class: measurement
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye DC Temperature"
+    address: 90
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+      - offset: -100
+    skip_updates: 5
+
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye AC Temperature"
+    address: 91
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+      - offset: -100
+    skip_updates: 5
+
+# Board WS2812 LED (GPIO4): green = RX, blue = TX
+light:
+  - platform: esp32_rmt_led_strip
+    pin: GPIO4
+    num_leds: 1
+    chipset: ws2812
+    rgb_order: GRB
+    name: "LED Status"
+    id: status_led
+    internal: true
+
+globals:
+  - id: led_off_ts
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+interval:
+  - interval: 150ms
+    then:
+      - lambda: |-
+          if (id(led_off_ts) != 0 && (millis() - id(led_off_ts)) > 120) {
+            id(status_led).turn_off().perform();
+            id(led_off_ts) = 0;
+          }
+
+binary_sensor:
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Grid Connected"
+    address: 194
+    register_type: holding
+    device_class: plug
