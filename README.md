@@ -19,7 +19,7 @@ Deye's newer WiBLE plug-and-play loggers **block local access entirely** (port 8
 | Component | Details |
 |---|---|
 | Inverter | **Deye SUN-6K-SG05LP1-EU-AM2-P** (single-phase hybrid, 6 kW, 48 V battery, 2 MPPT) |
-| Board | **LilyGO T-CAN485** (ESP32 WROOM-32, MAX13487E RS485 transceiver, WS2812 RGB LED, CAN bus) — 2026 revision |
+| Board | **LilyGO T-CAN485** (ESP32 WROOM-32, MAX13487E RS485 transceiver, WS2812 RGB LED, CAN bus) — 2024 1.1 revision |
 | Cable | Standard Ethernet patch cable, cut — only 3 wires used |
 
 Should also work with the whole **SUN-3.6/5/6/7/8/10K-SG05LP1-EU** family (same register map). See [docs/hardware.md](docs/hardware.md) for details.
