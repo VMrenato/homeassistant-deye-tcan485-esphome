@@ -4,6 +4,13 @@
 #   UART: TX GPIO22 / RX GPIO21 (MAX13487E AutoDirection transceiver — no flow control)
 #   Enables (active HIGH): GPIO19 = RS485 EN, GPIO17 = RS485 SE, GPIO16 = 5V Booster
 #   A/B -> inverter RS485/MODBUS port (pin2=orange=A, pin1=white-orange=B)
+#
+# NOTE (ESPHome 2026.9.0+): per-sensor `skip_updates` was retired (breaking
+# change, see https://esphome.io/blog/2026/09/16/esphome-2026-9/#breaking-changes).
+# "Slow" sensors (voltages, temperatures, currents, daily/total energy) were
+# migrated to a second modbus_controller (`deye_slow`, same address, 30s
+# interval) instead. Fast sensors (instantaneous power, SOC, grid-connected)
+# stay on the original 5s controller.
 
 esphome:
   name: deye-inversor
@@ -51,6 +58,14 @@ modbus_controller:
     address: 0x01
     setup_priority: -10
     update_interval: 5s
+    command_throttle: 50ms
+    offline_skip_updates: 3
+
+  - id: deye_slow
+    modbus_id: modbus1
+    address: 0x01
+    setup_priority: -10
+    update_interval: 30s
     command_throttle: 50ms
     offline_skip_updates: 3
 
@@ -102,7 +117,7 @@ sensor:
     lambda: "return id(pv1_power).state + id(pv2_power).state;"
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     name: "Deye PV1 Voltage"
     address: 109
     register_type: holding
@@ -113,10 +128,9 @@ sensor:
     accuracy_decimals: 1
     filters:
       - multiply: 0.1
-    skip_updates: 2
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     name: "Deye PV2 Voltage"
     address: 111
     register_type: holding
@@ -127,10 +141,9 @@ sensor:
     accuracy_decimals: 1
     filters:
       - multiply: 0.1
-    skip_updates: 2
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     name: "Deye Daily Production"
     address: 108
     register_type: holding
@@ -141,25 +154,22 @@ sensor:
     accuracy_decimals: 1
     filters:
       - multiply: 0.1
-    skip_updates: 5
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     id: total_production_lo
     address: 96
     register_type: holding
     value_type: U_WORD
     internal: true
-    skip_updates: 5
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     id: total_production_hi
     address: 97
     register_type: holding
     value_type: U_WORD
     internal: true
-    skip_updates: 5
 
   - platform: template
     name: "Deye Total Production"
@@ -192,7 +202,7 @@ sensor:
     state_class: measurement
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     name: "Deye Battery Voltage"
     address: 183
     register_type: holding
@@ -203,10 +213,9 @@ sensor:
     accuracy_decimals: 2
     filters:
       - multiply: 0.01
-    skip_updates: 2
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     name: "Deye Battery Current"
     address: 191
     register_type: holding
@@ -217,10 +226,9 @@ sensor:
     accuracy_decimals: 2
     filters:
       - multiply: 0.01
-    skip_updates: 2
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     name: "Deye Battery Temperature"
     address: 182
     register_type: holding
@@ -232,10 +240,9 @@ sensor:
     filters:
       - multiply: 0.1
       - offset: -100
-    skip_updates: 5
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     name: "Deye Daily Battery Charge"
     address: 70
     register_type: holding
@@ -246,10 +253,9 @@ sensor:
     accuracy_decimals: 1
     filters:
       - multiply: 0.1
-    skip_updates: 5
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     name: "Deye Daily Battery Discharge"
     address: 71
     register_type: holding
@@ -260,25 +266,22 @@ sensor:
     accuracy_decimals: 1
     filters:
       - multiply: 0.1
-    skip_updates: 5
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     id: total_battery_charge_lo
     address: 72
     register_type: holding
     value_type: U_WORD
     internal: true
-    skip_updates: 5
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     id: total_battery_charge_hi
     address: 73
     register_type: holding
     value_type: U_WORD
     internal: true
-    skip_updates: 5
 
   - platform: template
     name: "Deye Total Battery Charge"
@@ -290,22 +293,20 @@ sensor:
     lambda: "return (id(total_battery_charge_lo).state + id(total_battery_charge_hi).state * 65536.0) * 0.1;"
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     id: total_battery_discharge_lo
     address: 74
     register_type: holding
     value_type: U_WORD
     internal: true
-    skip_updates: 5
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     id: total_battery_discharge_hi
     address: 75
     register_type: holding
     value_type: U_WORD
     internal: true
-    skip_updates: 5
 
   - platform: template
     name: "Deye Total Battery Discharge"
@@ -338,7 +339,7 @@ sensor:
     state_class: measurement
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     name: "Deye Grid Voltage L1"
     address: 150
     register_type: holding
@@ -349,10 +350,9 @@ sensor:
     accuracy_decimals: 1
     filters:
       - multiply: 0.1
-    skip_updates: 2
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     name: "Deye Grid Frequency"
     address: 79
     register_type: holding
@@ -363,10 +363,9 @@ sensor:
     accuracy_decimals: 2
     filters:
       - multiply: 0.01
-    skip_updates: 5
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     name: "Deye Daily Energy Bought"
     address: 76
     register_type: holding
@@ -377,10 +376,9 @@ sensor:
     accuracy_decimals: 1
     filters:
       - multiply: 0.1
-    skip_updates: 5
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     name: "Deye Daily Energy Sold"
     address: 77
     register_type: holding
@@ -391,10 +389,9 @@ sensor:
     accuracy_decimals: 1
     filters:
       - multiply: 0.1
-    skip_updates: 5
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     name: "Deye Total Grid Import"
     address: 78
     register_type: holding
@@ -405,10 +402,9 @@ sensor:
     accuracy_decimals: 2
     filters:
       - multiply: 0.1
-    skip_updates: 5
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     name: "Deye Total Grid Export"
     address: 81
     register_type: holding
@@ -419,7 +415,6 @@ sensor:
     accuracy_decimals: 2
     filters:
       - multiply: 0.1
-    skip_updates: 5
 
   # ---------- Load ----------
   - platform: modbus_controller
@@ -433,7 +428,7 @@ sensor:
     state_class: measurement
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     name: "Deye Daily Load Consumption"
     address: 84
     register_type: holding
@@ -444,25 +439,22 @@ sensor:
     accuracy_decimals: 1
     filters:
       - multiply: 0.1
-    skip_updates: 5
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     id: total_load_consumption_lo
     address: 85
     register_type: holding
     value_type: U_WORD
     internal: true
-    skip_updates: 5
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     id: total_load_consumption_hi
     address: 86
     register_type: holding
     value_type: U_WORD
     internal: true
-    skip_updates: 5
 
   - platform: template
     name: "Deye Total Load Consumption"
@@ -485,7 +477,7 @@ sensor:
     state_class: measurement
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     name: "Deye DC Temperature"
     address: 90
     register_type: holding
@@ -497,10 +489,9 @@ sensor:
     filters:
       - multiply: 0.1
       - offset: -100
-    skip_updates: 5
 
   - platform: modbus_controller
-    modbus_controller_id: deye
+    modbus_controller_id: deye_slow
     name: "Deye AC Temperature"
     address: 91
     register_type: holding
@@ -512,7 +503,6 @@ sensor:
     filters:
       - multiply: 0.1
       - offset: -100
-    skip_updates: 5
 
 # Board WS2812 LED (GPIO4): green = RX, blue = TX
 light:
