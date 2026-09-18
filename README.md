@@ -8,7 +8,7 @@ Deye's newer WiBLE plug-and-play loggers **block local access entirely** (port 8
 
 ## Features
 
-- **~5 s polling** of PV (2 MPPT), battery, grid, load, daily/total energy, and temperatures — 33 Modbus sensors + 5 template sensors
+- **Two-tier polling** ~5 s for fast-changing values (PV/battery/grid/load power, SOC, grid-connected), ~30 s for slow-changing ones (voltages, currents, temperatures, daily/total energy) — 33 Modbus sensors + 5 template sensors
 - **Grid-connected binary sensor** (register 194) — detect grid loss / ATS transfer to backup and trigger automations
 - **WS2812 activity LED** on the board: blue flash = TX (request), green flash = RX (response) — instant visual confirmation the bus is alive
 - **Home Assistant auto-discovery** via the native ESPHome API — every entity appears with proper device/state classes, ready for the Energy dashboard
@@ -77,6 +77,8 @@ The short version of a multi-day debugging journey:
 - **Truncated frames / mid-frame byte loss** → cheap generic 5 V MAX485 modules. Avoid them; use the T-CAN485 (or a 3.3 V-native MAX3485).
 - **Boot loop / rollback after OTA** → don't touch or reset the device for ~90 s after an OTA flash (`safe_mode` marks the boot successful after 60 s).
 - **Grid frequency 0 / grid voltage off by 10×** → grid voltage is register **150** at ×0.1 (2377 = 237.7 V); don't use register 152.
+
+Upgrading from ESPHome < 2026.9.0 and slow sensors stop updating / config fails to compile → per-sensor skip_updates was removed in 2026.9.0. This config now uses a second modbus_controller (deye_slow, same address, 30 s interval, same command_throttle) for the slow-changing sensors instead. If you forked this repo before that change, pull the latest esphome/deye-inversor.yaml.
 
 Full details: **[docs/troubleshooting.md](docs/troubleshooting.md)**.
 
