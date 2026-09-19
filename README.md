@@ -4,7 +4,7 @@ Monitor a **Deye SUN-SG05LP1-EU** hybrid inverter locally from Home Assistant us
 
 ## Why
 
-Deye's newer WiBLE plug-and-play loggers **block local access entirely** (port 8899 is closed), pushing you into the Solarman cloud. The wired RS485 path on the inverter itself is always available, logger-free, and fully local: PV, battery, grid, load, energy totals and temperatures straight into Home Assistant over your LAN, with sub-5-second freshness and no third-party servers involved.
+Deye's newer WiBLE plug-and-play loggers **block local access entirely** (port 8899 is closed), pushing you into the Solarman cloud. The wired RS485 path on the inverter itself is always available, logger-free, and fully local: PV, battery, grid, load, energy totals and temperatures straight into Home Assistant over your LAN, with fast data freshness and no third-party servers involved.
 
 ## Features
 
