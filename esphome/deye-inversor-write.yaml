@@ -1,0 +1,154 @@
+# Deye SUN-6K-SG05LP1 — Writeable Register Controls
+# ========================================================
+#
+# WARNING: THIS FILE ENABLES WRITING TO MODBUS REGISTERS.
+# Use at your own risk. Always read a register's current value
+# before writing. If the inverter becomes unresponsive, power-cycle it.
+#
+# How to use:
+#   1. Copy this file alongside your existing deye-inversor.yaml
+#   2. In your ESPHome dashboard, create a NEW device/package that
+#      includes BOTH files, e.g.:
+#
+#      packages:
+#        deye_read: !include deye-inversor.yaml
+#        deye_write: !include deye-inversor-write.yaml
+#
+#   3. Compile and flash. New write-control entities will appear in HA.
+#
+# Tested on: Deye SUN-6K-SG05LP1-EU-AM2-P
+# Firmware: Unknown — test on a non-production system first
+#
+# Register sources:
+#   - StephanJoubert/home_assistant_solarman (deye_hybrid.yaml)
+#   - slipx06/Sunsynk-Home-Assistant-Dash (ESPHome-1P config)
+#   - Community field reports for SUN-*K-SG05LP1-EU family
+#
+# Confirmed safe to read+write (low risk, bounded failure):
+#   130 — Grid export limit
+#   131 — Max charge current
+#   135 — Max discharge current
+#   138 — Grid charge enable
+#
+# Requires: deye_slow modbus_controller defined in the main config
+# (uses modbus_controller_id: deye, same address 0x01)
+#
+# ESPHome 2026.9.0+ required (skip_updates was removed in this version)
+
+esphome:
+  name: deye-inversor-write
+  friendly_name: Deye Inversor Write Controls
+
+# No wifi/api/ota needed — this is included as a PACKAGE into the
+# main deye-inversor device. All network config comes from the parent.
+
+modbus:
+  id: modbus1  # share UART bus with main config
+
+modbus_controller:
+  - id: deye
+    # shares the same modbus_id and address as the main config
+    # IMPORTANT: do NOT re-declare the UART here — only reference
+    # the existing modbus_controller by id.
+    address: 0x01
+    modbus_id: modbus1
+    setup_priority: -10
+    update_interval: 60s   # writes don't need fast polling
+    command_throttle: 100ms  # throttle writes more aggressively
+    offline_skip_updates: 3
+
+# ============================================================
+# Number entities — slider controls for register values
+# ============================================================
+
+number:
+  # Register 130 — Grid export limit (0–10 000 W)
+  # 0 = no limit (unrestricted export)
+  # At 10 000 W the inverter caps exported power at 10 kW
+  # Safe to test: a value outside range simply rejects; no inverter fault
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Grid Export Limit"
+    address: 130
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "W"
+    min: 0
+    max: 10000
+    step: 100
+    mode: box
+    lambda: "return value;"
+
+  # Register 131 — Battery max charge current (raw 0–200 = 0–20 A)
+  # Display is scaled ×0.1 so the slider reads 0–20 A
+  # Write value = slider_value × 10 (e.g. 10 A → write 100)
+  # Check your battery specs before setting above 100A (10A per 48V battery)
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Max Charge Current"
+    address: 131
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "A"
+    min: 0
+    max: 200
+    step: 1
+    mode: box
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    lambda: "return value;"
+
+  # Register 135 — Battery max discharge current (raw 0–200 = 0–20 A)
+  # Same scaling as register 131
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Max Discharge Current"
+    address: 135
+    register_type: holding
+    value_type: U_WORD
+    unit_of_measurement: "A"
+    min: 0
+    max: 200
+    step: 1
+    mode: box
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    lambda: "return value;"
+
+# ============================================================
+# Switch entities — binary on/off controls
+# ============================================================
+
+switch:
+  # Register 138 — Grid charging enable (0 = disabled, 1 = enabled)
+  # WARNING: enabling grid charge allows the inverter to pull from the
+  # grid to charge the battery. This can significantly increase energy
+  # costs if left on unintentionally. Default on most Deye inverters is
+  # usually 0 (disabled).
+  - platform: modbus_controller
+    modbus_controller_id: deye
+    name: "Deye Grid Charge Enable"
+    address: 138
+    register_type: holding
+    bitmask: 1
+    invert: false
+
+  # Register 59 — Work mode (NOT included by default)
+  # Values vary wildly between firmware versions. Common values:
+  #   2  = Grid-tied (default)
+  #   10 = Backup / UPS
+  #   15 = Force grid charge
+  #   17 = Force discharge
+  #   20 = Battery standby
+  # Only uncomment and use after manually verifying your firmware's
+  # register 59 encoding. Writing the wrong value can trigger grid
+  # protection or cut inverter output.
+  # - platform: modbus_controller
+  #   modbus_controller_id: deye
+  #   name: "Deye Work Mode"
+  #   address: 59
+  #   register_type: holding
+  #   value_type: U_WORD
+  #   bitmask: 0xFF
