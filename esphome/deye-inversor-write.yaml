@@ -1,9 +1,24 @@
 # Deye SUN-6K-SG05LP1 — Writeable Register Controls
 # ========================================================
 #
-# WARNING: THIS FILE ENABLES WRITING TO MODBUS REGISTERS.
-# Use at your own risk. Always read a register's current value
-# before writing. If the inverter becomes unresponsive, power-cycle it.
+# ⚠️ DISCLAIMER — UNTESTED — USE AT YOUR OWN RISK ⚠️
+#
+# THIS FILE HAS NOT BEEN TESTED ON REAL HARDWARE.
+# The register values and ranges documented here are assembled from
+# community sources and cross-referenced documentation. They may be
+# incomplete, incorrect, or cause unexpected inverter behaviour.
+#
+# THE AUTHORS AND MAINTAINERS OF THIS PROJECT ASSUME NO RESPONSIBILITY
+# FOR ANY DAMAGE, DATA LOSS, EQUIPMENT FAILURE, OR FINANCIAL COST
+# INCURRED AS A RESULT OF USING THIS FILE.
+#
+# By using this file you accept that:
+#   - All risk is entirely yours.
+#   - You should test on a non-production / isolated system first.
+#   - Always read a register's current value BEFORE writing — note it so
+#     you can restore it if needed.
+#   - If the inverter becomes unresponsive, power-cycle it; registers
+#     revert to their prior values on restart.
 #
 # How to use:
 #   1. Copy this file alongside your existing deye-inversor.yaml

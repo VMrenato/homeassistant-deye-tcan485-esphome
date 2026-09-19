@@ -81,7 +81,11 @@ The short version of a multi-day debugging journey:
 
 Upgrading from ESPHome < 2026.9.0 and slow sensors stop updating / config fails to compile → per-sensor skip_updates was removed in 2026.9.0. This config now uses a second modbus_controller (deye_slow, same address, 30 s interval, same command_throttle) for the slow-changing sensors instead. If you forked this repo before that change, pull the latest esphome/deye-inversor.yaml.
 
-## Writeable registers (opt-in)
+## Writeable registers (opt-in, ⚠️ untested)
+
+> **⚠️ DISCLAIMER — UNTESTED — USE AT YOUR OWN RISK**
+>
+> These registers have **not been tested on real hardware**. Values and ranges are assembled from community sources and cross-referenced documentation. They may be incomplete, incorrect, or cause unexpected inverter behaviour. **All risk is entirely yours.**
 
 A separate file [`esphome/deye-inversor-write.yaml`](esphome/deye-inversor-write.yaml) exposes write controls for selected registers. These are **NOT included** in the main config — they must be explicitly added.
 
