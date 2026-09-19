@@ -93,3 +93,17 @@ This applies to registers 96–97 (total production), 72–73 (total battery cha
 - `command_throttle: 50ms` — gap between consecutive Modbus commands
 - `offline_skip_updates: 3` — declare the inverter offline after 3 failed cycles
 - Consecutive registers are automatically batched into block reads by `modbus_controller`; a full cycle is ~19 commands and takes roughly 4–7 s at 9600 baud, which is why 5 s polling is the sweet spot.
+
+## Writeable registers
+
+> **Opt-in only.** These are not part of the main read-only config. See [`esphome/deye-inversor-write.yaml`](../esphome/deye-inversor-write.yaml) for the full implementation and safety notes.
+
+| Control | Address | Type | Range | Description |
+|---------|---------|------|--------|-------------|
+| Grid Export Limit | 130 | U_WORD | 0–10 000 W | Caps exported power. 0 = unlimited. |
+| Max Charge Current | 131 | U_WORD | 0–200 (raw = ×0.1 → 0–20 A) | Limits battery charge current. |
+| Max Discharge Current | 135 | U_WORD | 0–200 (raw = ×0.1 → 0–20 A) | Limits battery discharge current. |
+| Grid Charge Enable | 138 | U_WORD/bitmask | 0 or 1 | Allows grid→battery charging. Default 0. |
+| Work Mode | 59 | U_WORD | varies by firmware | NOT included — values differ across firmware versions. Verify before use. |
+
+Always read the current register value before writing and note it for restoration. If the inverter becomes unresponsive after a write, power-cycle it — register values revert to their prior state on restart.

@@ -9,6 +9,7 @@ Deye's newer WiBLE plug-and-play loggers **block local access entirely** (port 8
 ## Features
 
 - **Two-tier polling** ~5 s for fast-changing values (PV/battery/grid/load power, SOC, grid-connected), ~30 s for slow-changing ones (voltages, currents, temperatures, daily/total energy) — 33 Modbus sensors + 5 template sensors
+- **Optional write controls** via [`esphome/deye-inversor-write.yaml`](esphome/deye-inversor-write.yaml): grid export limit, max charge/discharge current, grid charge toggle — opt-in only, shipped as a separate file
 - **Grid-connected binary sensor** (register 194) — detect grid loss / ATS transfer to backup and trigger automations
 - **WS2812 activity LED** on the board: blue flash = TX (request), green flash = RX (response) — instant visual confirmation the bus is alive
 - **Home Assistant auto-discovery** via the native ESPHome API — every entity appears with proper device/state classes, ready for the Energy dashboard
@@ -79,6 +80,36 @@ The short version of a multi-day debugging journey:
 - **Grid frequency 0 / grid voltage off by 10×** → grid voltage is register **150** at ×0.1 (2377 = 237.7 V); don't use register 152.
 
 Upgrading from ESPHome < 2026.9.0 and slow sensors stop updating / config fails to compile → per-sensor skip_updates was removed in 2026.9.0. This config now uses a second modbus_controller (deye_slow, same address, 30 s interval, same command_throttle) for the slow-changing sensors instead. If you forked this repo before that change, pull the latest esphome/deye-inversor.yaml.
+
+## Writeable registers (opt-in, ⚠️ untested)
+
+> **⚠️ DISCLAIMER — UNTESTED — USE AT YOUR OWN RISK**
+>
+> These registers have **not been tested on real hardware**. Values and ranges are assembled from community sources and cross-referenced documentation. They may be incomplete, incorrect, or cause unexpected inverter behaviour. **All risk is entirely yours.**
+
+A separate file [`esphome/deye-inversor-write.yaml`](esphome/deye-inversor-write.yaml) exposes write controls for selected registers. These are **NOT included** in the main config — they must be explicitly added.
+
+To use: include the write file alongside the read config in your ESPHome device:
+
+```yaml
+packages:
+  deye_read: !include esphome/deye-inversor.yaml
+  deye_write: !include esphome/deye-inversor-write.yaml
+```
+
+Available controls:
+
+| Control | Register | Notes |
+|---------|----------|-------|
+| Grid Export Limit | 130 | 0–10 000 W |
+| Max Charge Current | 131 | 0–20 A (display), raw ×0.1 |
+| Max Discharge Current | 135 | 0–20 A (display), raw ×0.1 |
+| Grid Charge Enable | 138 | binary on/off |
+
+> [!WARNING]
+> Always read a register's current value before writing. Test on a non-production system first. Writing the wrong value to register 59 (work mode) can trigger grid-protection faults — that register is not included.
+
+Full details and safety notes: [`esphome/deye-inversor-write.yaml`](esphome/deye-inversor-write.yaml).
 
 Full details: **[docs/troubleshooting.md](docs/troubleshooting.md)**.
 
