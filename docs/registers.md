@@ -2,14 +2,14 @@
 
 All registers are **holding registers** (function code 0x03) on Modbus RTU slave **address 1**, 9600 8N1. Addresses below are decimal, exactly as used in [`esphome/deye-inversor.yaml`](../esphome/deye-inversor.yaml).
 
-Sources: the register definitions were built from StephanJoubert's [home_assistant_solarman](https://github.com/StephanJoubert/home_assistant_solarman) `deye_hybrid.yaml` profile and cross-checked against slipx06's [Sunsynk-Home-Assistant-Dash](https://github.com/slipx06/Sunsynk-Home-Assistant-Dash) ESPHome-1P config, then validated against a live SUN-6K-SG05LP1-EU-AM2-P.
+> **Source:** Official Deye document *Modbus RTU Protocol — Energy Storage / String / Micro-inverter, Ningbo Deye, V1.19 (20220223)* — received directly from Deye technical support. Register definitions, units, scaling factors and R/W flags are taken directly from this document.
 
 `skip_updates` in the tables is the ESPHome throttle (publish only every Nth polled value) used to reduce HA database churn on slow-changing values.
 
 ## Solar
 
 | Sensor | Address | Type | Scale / filter | Unit | skip_updates |
-|---|---|---|---|---|---|
+|--------|---------|------|-----------------|------|-------------|
 | Deye PV1 Power | 186 | U_WORD | ×1 | W | — |
 | Deye PV2 Power | 187 | U_WORD | ×1 | W | — |
 | Deye PV1 Voltage | 109 | U_WORD | ×0.1 | V | 2 |
@@ -23,7 +23,7 @@ Sources: the register definitions were built from StephanJoubert's [home_assista
 ## Battery
 
 | Sensor | Address | Type | Scale / filter | Unit | skip_updates |
-|---|---|---|---|---|---|
+|--------|---------|------|-----------------|------|-------------|
 | Deye Battery SOC | 184 | U_WORD | ×1 | % | — |
 | Deye Battery Power | 190 | S_WORD | ×1 (signed; discharge/charge by sign) | W | — |
 | Deye Battery Voltage | 183 | U_WORD | ×0.01 | V | 2 |
@@ -41,7 +41,7 @@ Sources: the register definitions were built from StephanJoubert's [home_assista
 ## Grid
 
 | Sensor | Address | Type | Scale / filter | Unit | skip_updates |
-|---|---|---|---|---|---|
+|--------|---------|------|-----------------|------|-------------|
 | Deye Grid Power | 169 | S_WORD | ×1 (signed) | W | — |
 | Deye Grid CT Power | 172 | S_WORD | ×1 (signed, external CT/meter) | W | — |
 | Deye Grid Voltage L1 | 150 | U_WORD | ×0.1 (2377 = 237.7 V) | V | 2 |
@@ -56,8 +56,9 @@ Sources: the register definitions were built from StephanJoubert's [home_assista
 ## Load
 
 | Sensor | Address | Type | Scale / filter | Unit | skip_updates |
-|---|---|---|---|---|---|
+|--------|---------|------|-----------------|------|-------------|
 | Deye Load Power | 178 | U_WORD | ×1 | W | — |
+| Deye Load Voltage L1 | 157 | U_WORD | ×0.1 | V | 2 |
 | Deye Daily Load Consumption | 84 | U_WORD | ×0.1 | kWh | 5 |
 | *(total_load_consumption_lo, internal)* | 85 | U_WORD | low word | — | 5 |
 | *(total_load_consumption_hi, internal)* | 86 | U_WORD | high word | — | 5 |
@@ -66,16 +67,23 @@ Sources: the register definitions were built from StephanJoubert's [home_assista
 ## Inverter
 
 | Sensor | Address | Type | Scale / filter | Unit | skip_updates |
-|---|---|---|---|---|---|
+|--------|---------|------|-----------------|------|-------------|
 | Deye Inverter Power | 175 | S_WORD | ×1 (signed) | W | — |
 | Deye DC Temperature | 90 | U_WORD | ×0.1 − 100 | °C | 5 |
 | Deye AC Temperature | 91 | U_WORD | ×0.1 − 100 | °C | 5 |
 
+## Battery health (read-only)
+
+| Sensor | Address | Type | Scale / filter | Unit | Notes |
+|--------|---------|------|-----------------|------|-------|
+| Deye Battery Status | 185 | U_WORD | — | — | 0=idle; 1=charging; 2=discharging (inferred from integration state) |
+| Deye Battery Cycle Count | 611 | U_WORD | ×1 | cycles | Battery cycle count (Pack 1 BMS) |
+
 ## Binary sensor
 
-| Entity | Address | Notes |
-|---|---|---|
-| Deye Grid Connected | 194 | 1 = grid present, 0 = grid lost (ATS/backup detection for automations) |
+| Entity | Address | Description |
+|--------|---------|-------------|
+| Deye Grid Relay State | 194 | Grid relay contactor state: `1` = closed (grid present); `2` = open (grid lost / ATS in backup mode). Useful for automations detecting off-grid transition. |
 
 ## 32-bit energy totals: low-word-first
 
@@ -100,10 +108,10 @@ This applies to registers 96–97 (total production), 72–73 (total battery cha
 
 | Control | Address | Type | Range | Description |
 |---------|---------|------|--------|-------------|
-| Grid Export Limit | 130 | U_WORD | 0–10 000 W | Caps exported power. 0 = unlimited. |
-| Max Charge Current | 131 | U_WORD | 0–200 (raw = ×0.1 → 0–20 A) | Limits battery charge current. |
-| Max Discharge Current | 135 | U_WORD | 0–200 (raw = ×0.1 → 0–20 A) | Limits battery discharge current. |
+| Grid Export Limit | 130 | U_WORD | 0–10 000 W | Caps exported power. 0 = unlimited. ⚠️ Verify address on your firmware before use. |
+| Max Charge Current | 131 | U_WORD | 0–200 (raw ×0.1 → 0–20 A) | Limits battery charge current. |
+| Max Discharge Current | 135 | U_WORD | 0–200 (raw ×0.1 → 0–20 A) | Limits battery discharge current. |
 | Grid Charge Enable | 138 | U_WORD/bitmask | 0 or 1 | Allows grid→battery charging. Default 0. |
-| Work Mode | 59 | U_WORD | varies by firmware | NOT included — values differ across firmware versions. Verify before use. |
+| Work Mode | 59 | U_WORD | varies by firmware | **NOT included** — values differ across firmware versions. Verify before use. |
 
-Always read the current register value before writing and note it for restoration. If the inverter becomes unresponsive after a write, power-cycle it — register values revert to their prior state on restart.
+> ⚠️ **Always read the current register value before writing.** If the inverter becomes unresponsive after a write, power-cycle it — register values revert to their prior state on restart.

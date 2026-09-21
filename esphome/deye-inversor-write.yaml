@@ -1,12 +1,13 @@
 # Deye SUN-6K-SG05LP1 — Writeable Register Controls
 # ========================================================
 #
-# ⚠️ DISCLAIMER — UNTESTED — USE AT YOUR OWN RISK ⚠️
+# ⚠️ DISCLAIMER — UNTESTED ON THIS FIRMWARE — USE AT YOUR OWN RISK ⚠️
 #
-# THIS FILE HAS NOT BEEN TESTED ON REAL HARDWARE.
-# The register values and ranges documented here are assembled from
-# community sources and cross-referenced documentation. They may be
-# incomplete, incorrect, or cause unexpected inverter behaviour.
+# THIS FILE HAS NOT BEEN TESTED ON REAL HARDWARE WITH THE V1.19
+# FIRMWARE. The register values and ranges documented here are sourced
+# from community references and cross-referenced against the official Deye
+# V1.19 register map. They may be incomplete, incorrect, or differ for
+# your specific firmware version.
 #
 # THE AUTHORS AND MAINTAINERS OF THIS PROJECT ASSUME NO RESPONSIBILITY
 # FOR ANY DAMAGE, DATA LOSS, EQUIPMENT FAILURE, OR FINANCIAL COST
@@ -35,12 +36,18 @@
 # Firmware: Unknown — test on a non-production system first
 #
 # Register sources:
+#   - Official Deye V1.19 document (Modbus RTU Protocol, 20220223)
+#     received directly from Deye technical support — primary source for
+#     units, ranges and R/W flags.
 #   - StephanJoubert/home_assistant_solarman (deye_hybrid.yaml)
 #   - slipx06/Sunsynk-Home-Assistant-Dash (ESPHome-1P config)
 #   - Community field reports for SUN-*K-SG05LP1-EU family
 #
+# ⚠️ Register 130 (Grid Export Limit): community-sourced address,
+#    not explicitly confirmed in the V1.19 doc for this specific model.
+#    Verify by reading the current value before first write.
+#
 # Confirmed safe to read+write (low risk, bounded failure):
-#   130 — Grid export limit
 #   131 — Max charge current
 #   135 — Max discharge current
 #   138 — Grid charge enable
