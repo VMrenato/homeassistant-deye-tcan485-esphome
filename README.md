@@ -8,9 +8,11 @@ Deye's newer WiBLE plug-and-play loggers **block local access entirely** (port 8
 
 ## Features
 
-- **Two-tier polling** ~5 s for fast-changing values (PV/battery/grid/load power, SOC, grid-connected), ~30 s for slow-changing ones (voltages, currents, temperatures, daily/total energy) — 33 Modbus sensors + 5 template sensors
+- **Two-tier polling** ~5 s for fast-changing values (PV/battery/grid/load power, SOC, grid-connected), ~30 s for slow-changing ones (voltages, currents, temperatures, daily/total energy) — 35 Modbus sensors + 6 template sensors
+- **Battery health** — cycle count (BMS) and battery status (charge/discharge/idle state)
+- **Load voltage monitoring** — house voltage from register 157
 - **Optional write controls** via [`esphome/deye-inversor-write.yaml`](esphome/deye-inversor-write.yaml): grid export limit, max charge/discharge current, grid charge toggle — opt-in only, shipped as a separate file
-- **Grid-connected binary sensor** (register 194) — detect grid loss / ATS transfer to backup and trigger automations
+- **Grid-connected binary sensor** (register 194, relay state) — detect grid loss / ATS transfer to backup and trigger automations
 - **WS2812 activity LED** on the board: blue flash = TX (request), green flash = RX (response) — instant visual confirmation the bus is alive
 - **Home Assistant auto-discovery** via the native ESPHome API — every entity appears with proper device/state classes, ready for the Energy dashboard
 - **No flow control pin needed** — the T-CAN485's MAX13487E transceiver is AutoDirection
@@ -63,7 +65,7 @@ The inverter is a Modbus RTU slave at **address 1, 9600 8N1**. Full details in [
 
 ## Register map
 
-The config polls 33 Modbus registers (holding registers, slave 1): PV power/voltage/production, battery SOC/power/voltage/current/temperature/charge/discharge, grid power/CT/voltage/frequency/import/export, load power/consumption, inverter power and DC/AC temperatures — plus a grid-connected binary sensor on register 194.
+The config polls 33 Modbus registers (holding registers, slave 1): PV power/voltage/production, battery SOC/power/voltage/current/temperature/charge/discharge/cycle-count, grid power/CT/voltage/frequency/import/export, load power/voltage/consumption, inverter power and DC/AC temperatures — plus a grid-connected binary sensor on register 194.
 
 Deye 32-bit energy totals are **low-word-first**: the YAML reads the lo/hi words separately and combines them in template sensors, e.g. total production = `(lo + hi × 65536) × 0.1` kWh.
 
