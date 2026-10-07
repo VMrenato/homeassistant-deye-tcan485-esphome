@@ -8,7 +8,7 @@ Deye's newer WiBLE plug-and-play loggers **block local access entirely** (port 8
 
 ## Features
 
-- **Three-tier polling** ~5 s for fast-changing values (PV/battery/grid/load power, SOC, grid-connected), ~30 s for slow-changing ones (voltages, currents, temperatures, daily/total energy), ~120 s for the read-only settings mirror — 35 live-data Modbus sensors + 6 template sensors + 34 read-only settings entities
+- **Three-tier polling** ~5 s for fast-changing values (PV/battery/grid/load power, SOC, grid-connected), ~30 s for slow-changing ones (voltages, currents, temperatures, daily/total energy), ~120 s for the read-only settings mirror — 37 live-data Modbus sensors + 8 template sensors + 34 read-only settings entities
 - **Battery health** — cycle count (BMS) and battery status (charge/discharge/idle state)
 - **Load voltage monitoring** — house voltage from register 157
 - **Read-only settings mirror** — a third controller (120 s) shows the inverter's current configuration in Home Assistant: device info / firmware (regs 0–19), battery shutdown/restart/low SOC, grid-charge current and enable, and the full Time-of-Use program (6 slots: start time, power, SOC, charge flags)
@@ -67,7 +67,7 @@ The inverter is a Modbus RTU slave at **address 1, 9600 8N1**. Full details in [
 
 ## Register map
 
-The config polls 33 live-data Modbus registers (holding registers, slave 1): PV power/voltage/production, battery SOC/power/voltage/current/temperature/charge/discharge/cycle-count, grid power/CT/voltage/frequency/import/export, load power/voltage/consumption, inverter power and DC/AC temperatures — plus a grid-connected binary sensor on register 194, and a read-only mirror of the configuration registers (0–20, 43, 217–219, 230, 232, 248–279).
+The config polls 35 live-data Modbus registers (holding registers, slave 1): PV power/voltage/production, battery SOC/power/voltage/current/temperature/charge/discharge/cycle-count, grid power/CT/voltage/frequency/import/export, load power/voltage/consumption, inverter power and DC/AC temperatures — plus a grid-connected binary sensor on register 194, and a read-only mirror of the configuration registers (0–20, 43, 217–219, 230, 232, 248–279).
 
 Deye 32-bit energy totals are **low-word-first**: the YAML reads the lo/hi words separately and combines them in template sensors, e.g. total production = `(lo + hi × 65536) × 0.1` kWh.
 
