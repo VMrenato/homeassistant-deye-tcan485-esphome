@@ -4,7 +4,7 @@ All registers are **holding registers** (function code 0x03) on Modbus RTU slave
 
 > **Source:** Official Deye document *Modbus RTU Protocol — Energy Storage / String / Micro-inverter, Ningbo Deye, V1.19 (20220223)* — received directly from Deye technical support. Register definitions, units, scaling factors and R/W flags are taken directly from this document.
 
-`skip_updates` in the tables is the ESPHome throttle (publish only every Nth polled value) used to reduce HA database churn on slow-changing values.
+`skip_updates` in the tables is the historical publish throttle. Since ESPHome 2026.9.0 it is implemented differently: values marked with a `skip_updates` number are polled by the slow controller (`deye_slow`, 30 s); the others by the fast one (`deye`, 5 s). Instantaneous power sensors additionally use a `throttle: 60s` / `delta: 25` publish filter (see [Polling profile](#polling-profile)).
 
 ## Solar
 
@@ -95,23 +95,97 @@ lambda: "return (id(total_production_lo).state + id(total_production_hi).state *
 
 This applies to registers 96–97 (total production), 72–73 (total battery charge), 74–75 (total battery discharge) and 85–86 (total load consumption). Total grid import (78) and export (81) fit in a single word on this model and are read directly.
 
+## Settings mirror (read-only, `deye_cfg`)
+
+A third controller polls the configuration registers every **120 s**, read-only. All entities are `diagnostic`. Use them to see the inverter's current settings before writing anything.
+
+### Device info (registers 0–19)
+
+Read as one 20-register block into the text sensor **Deye Cfg Info raw 0-19** (hex), plus **Deye Cfg Device type** (0).
+
+| Address | Content (V1.19) | Observed on SUN-6K-SG05LP1-EU-AM2-P |
+|---------|-----------------|--------------------------------------|
+| 0 | Device type — documented as `0x0300` = single-phase LV hybrid | Reads **`0x0003`** (bytes swapped vs. the document) |
+| 1 | Modbus address | `1` |
+| 2 | Protocol version | `0x0201` — the V1.19 map still matches |
+| 3–7 | Serial number, ASCII | 10 characters packed **2 per register** in regs 3–7 (the document lists one byte per register, 3–12) |
+| 11, 13 | — | Main firmware version, shown on the LCD as `XXXX-YYYY` (reg 11 = first half, reg 13 = second half, in hex) |
+| 14 | — | HMI firmware version (hex) |
+| 16–17 | Rated power, 0.1 W, low word first | `0xEA60` = 60 000 → 6 000 W |
+| 18 | MPPTs and phases | `0x0201` = 2 MPPT, 1 phase |
+
+### Control registers (read-only here)
+
+| Sensor | Address | Meaning (V1.19) | Note |
+|--------|---------|-----------------|------|
+| Deye Cfg Remote lock | 20 | `0` unlocked, `2` locked | ⚠️ Reads **255** on the tested unit while running — meaning unverified |
+| Deye Cfg Inverter enabled | 43 | `1` on, `0` off | ⚠️ Reads **0** on the tested unit while it is running — meaning unverified. Do **not** build an on/off control on it |
+
+### Battery thresholds and grid charge
+
+| Sensor | Address | Unit | Meaning |
+|--------|---------|------|---------|
+| Deye Cfg Battery shutdown SOC | 217 | % | Battery cut-off |
+| Deye Cfg Battery restart SOC | 218 | % | Recovery point after a cut-off |
+| Deye Cfg Battery low SOC | 219 | % | Low-battery warning |
+| Deye Cfg Grid charge current | 230 | A | Grid → battery charge current |
+| Deye Cfg Grid charge enabled | 232 | — | Global grid-charge enable |
+
+### Time-of-Use program (registers 248–279)
+
+| Sensor | Address | Meaning |
+|--------|---------|---------|
+| Deye Cfg Use timer | 248 | Bit0 = TOU enabled; bits 1–7 = Mon…Sun. `255` = enabled every day |
+| Deye Cfg Prog*N* time | 249 + *N* (250–255) | Slot start time, **HHMM** as a decimal number (`100` = 01:00, `1700` = 17:00). Each slot runs until the next one starts |
+| Deye Cfg Prog*N* power | 255 + *N* (256–261) | Max battery discharge power in the slot, W |
+| Deye Cfg Prog*N* SOC | 267 + *N* (268–273) | Target / floor SOC for the slot, % |
+| Deye Cfg Prog*N* flags | 273 + *N* (274–279) | Bit0 = charge from grid, Bit1 = charge from generator, Bit2–4 = mode bits. On the tested unit every slot reads **4** (bit2 only); enabling grid charge for a slot sets it to **5** |
+
+Voltage targets per slot (262–267) are not read: they only matter when the battery is configured by voltage instead of SOC.
+
 ## Polling profile
 
-- `update_interval: 5s` — one full read cycle every 5 s
-- `command_throttle: 50ms` — gap between consecutive Modbus commands
-- `offline_skip_updates: 3` — declare the inverter offline after 3 failed cycles
-- Consecutive registers are automatically batched into block reads by `modbus_controller`; a full cycle is ~19 commands and takes roughly 4–7 s at 9600 baud, which is why 5 s polling is the sweet spot.
+Three controllers share the bus (same slave address, same 50 ms `command_throttle`):
+
+| Controller | Interval | What |
+|------------|----------|------|
+| `deye` | 5 s | Instantaneous power, SOC, battery status, grid relay |
+| `deye_slow` | 30 s | Voltages, currents, temperatures, daily/total energy, cycle count |
+| `deye_cfg` | 120 s | Read-only settings mirror (above) |
+
+- `offline_skip_updates: 3` — declare the inverter offline after 3 failed cycles.
+- Consecutive registers are automatically batched into block reads by `modbus_controller`; the fast cycle is ~19 commands and takes roughly 4–7 s at 9600 baud, which is why 5 s polling is the sweet spot.
+- Power sensors (PV1/PV2/PV total, battery, grid, grid CT, load, inverter) publish on a change of **≥ 25 W** or at least **once every 60 s** (`or: [throttle: 60s, delta: 25]`). Polling stays at 5 s, so changes still arrive immediately, but steady values stop flooding the Home Assistant database.
+- Template sensors that combine filtered sensors read `.raw_state` (e.g. PV total = `pv1.raw_state + pv2.raw_state`); `.state` would add two already-throttled values and lag behind.
 
 ## Writeable registers
 
-> **Opt-in only.** These are not part of the main read-only config. See [`esphome/deye-inversor-write.yaml`](../esphome/deye-inversor-write.yaml) for the full implementation and safety notes.
+> **Opt-in only.** Not part of the main read-only config. See [`esphome/deye-inversor-write.yaml`](../esphome/deye-inversor-write.yaml).
+
+### Shipped — verified on hardware
 
 | Control | Address | Type | Range | Description |
-|---------|---------|------|--------|-------------|
-| Grid Export Limit | 130 | U_WORD | 0–10 000 W | Caps exported power. 0 = unlimited. ⚠️ Verify address on your firmware before use. |
-| Max Charge Current | 131 | U_WORD | 0–200 (raw ×0.1 → 0–20 A) | Limits battery charge current. |
-| Max Discharge Current | 135 | U_WORD | 0–200 (raw ×0.1 → 0–20 A) | Limits battery discharge current. |
-| Grid Charge Enable | 138 | U_WORD/bitmask | 0 or 1 | Allows grid→battery charging. Default 0. |
-| Work Mode | 59 | U_WORD | varies by firmware | **NOT included** — values differ across firmware versions. Verify before use. |
+|---------|---------|------|-------|-------------|
+| Deye TOU Slot 5 SOC | 272 | U_WORD, function 0x10 | 20–90 % (clamped) | Target SOC for Time-of-Use slot 5 |
+| Deye TOU Slot 5 Grid Charge | 278 bit0 | template switch → U_WORD, function 0x10 | writes only `4` ↔ `5` | Allow grid charging in slot 5. Refuses to act if the register currently holds anything other than 4 or 5 |
 
-> ⚠️ **Always read the current register value before writing.** If the inverter becomes unresponsive after a write, power-cycle it — register values revert to their prior state on restart.
+Both were confirmed by Modbus read-back and on the inverter LCD. The same pattern works for any slot *N*: SOC = 267 + *N*, flags = 273 + *N*.
+
+### Documented in V1.19 but not shipped
+
+The earlier version of the write file used registers 130/131/135/138 from community sources. **Those addresses are not in the official V1.19 map for this inverter family** and have been removed. The documented addresses are:
+
+| Setting | Address | Unit / range (V1.19) |
+|---------|---------|----------------------|
+| Max charge current | 210 | 1 A, 0–185 |
+| Max discharge current | 211 | 1 A, 0–185 |
+| Grid charge enable (global) | 232 | — |
+| Energy management mode | 243 | 0 = battery first, 1 = load first |
+| Limit control | 244 | 0 = selling, 1 = built-in CT, 2 = external meter |
+| Export power limit | 245 | 1 W |
+| Solar sell | 247 | 0 = off, 1 = on |
+| Switch on/off | 43 | See the warning above — reads don't match the document |
+
+None of these have been written on hardware. If you add one, follow the rules in the write file: read first, function 0x10, range-limited `number`, never a raw `write_lambda`.
+
+> ⚠️ **Always read the current register value before writing**, and note it so you can restore it.

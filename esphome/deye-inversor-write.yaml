@@ -1,176 +1,110 @@
-# Deye SUN-6K-SG05LP1 — Writeable Register Controls
+# Deye SUN-6K-SG05LP1 — Write controls (opt-in package)
 # ========================================================
 #
-# ⚠️ DISCLAIMER — UNTESTED ON THIS FIRMWARE — USE AT YOUR OWN RISK ⚠️
+# ⚠️ USE AT YOUR OWN RISK ⚠️
 #
-# THIS FILE HAS NOT BEEN TESTED ON REAL HARDWARE WITH THE V1.19
-# FIRMWARE. The register values and ranges documented here are sourced
-# from community references and cross-referenced against the official Deye
-# V1.19 register map. They may be incomplete, incorrect, or differ for
-# your specific firmware version.
+# This package exposes exactly TWO write controls, both on Time-of-Use
+# program slot 5 (registers 272 and 278). They were verified on a real
+# SUN-6K-SG05LP1-EU-AM2-P: every write was confirmed by reading the register
+# back over Modbus AND on the inverter's LCD (System Work Mode → Time of Use).
+# That is still one unit with one firmware — check yours before relying on it.
 #
-# THE AUTHORS AND MAINTAINERS OF THIS PROJECT ASSUME NO RESPONSIBILITY
-# FOR ANY DAMAGE, DATA LOSS, EQUIPMENT FAILURE, OR FINANCIAL COST
-# INCURRED AS A RESULT OF USING THIS FILE.
+# THE AUTHORS AND MAINTAINERS OF THIS PROJECT ASSUME NO RESPONSIBILITY FOR
+# ANY DAMAGE, DATA LOSS, EQUIPMENT FAILURE, OR FINANCIAL COST INCURRED AS A
+# RESULT OF USING THIS FILE.
 #
-# By using this file you accept that:
-#   - All risk is entirely yours.
-#   - You should test on a non-production / isolated system first.
-#   - Always read a register's current value BEFORE writing — note it so
-#     you can restore it if needed.
-#   - If the inverter becomes unresponsive, power-cycle it; registers
-#     revert to their prior values on restart.
+# Design rules (learned the hard way):
+#   1. Read before write. The main config's `deye_cfg` controller mirrors
+#      registers 248-279 read-only. Look at those values in Home Assistant
+#      (and on the LCD) BEFORE adding this package.
+#   2. Function 0x10 only. Deye requires "Write Multiple Registers" (0x10)
+#      for settings; every number here sets `use_write_multiple: true`.
+#   3. Range-limited numbers, never free-form writes. Each writable register
+#      gets a `number` with min/max clamps, so a bad value is rejected by
+#      ESPHome before it reaches the bus.
+#   4. No `write_lambda` that builds a payload. On a modbus_controller
+#      switch, a write_lambda that pushes bytes into `payload` is sent as a
+#      RAW custom frame (the log shows "broadcast refused function 0x4") —
+#      not as a register write. Use a range-limited number + template switch
+#      (as below) instead.
+#   5. Touch one bit, refuse everything else. The grid-charge switch only
+#      flips register 278 between 4 and 5 and refuses to act if the current
+#      value is anything else, so other mode bits are never overwritten.
 #
-# How to use:
-#   1. Copy this file alongside your existing deye-inversor.yaml
-#   2. In your ESPHome dashboard, create a NEW device/package that
-#      includes BOTH files, e.g.:
+# Requires the main esphome/deye-inversor.yaml (it defines the `deye_cfg`
+# controller and the `prog5_flags_r` read-back sensor used here).
 #
-#      packages:
-#        deye_read: !include deye-inversor.yaml
-#        deye_write: !include deye-inversor-write.yaml
+# How to use — in your ESPHome device file:
 #
-#   3. Compile and flash. New write-control entities will appear in HA.
+#   packages:
+#     deye_read: !include esphome/deye-inversor.yaml
+#     deye_write: !include esphome/deye-inversor-write.yaml
 #
-# Tested on: Deye SUN-6K-SG05LP1-EU-AM2-P
-# Firmware: Unknown — test on a non-production system first
+# Other slots: copy the blocks and change the addresses — slot N uses
+# SOC register 267+N and flags register 273+N (N = 1..6). Slot start times
+# are registers 250-255 (HHMM, e.g. 1700 = 17:00).
 #
-# Register sources:
-#   - Official Deye V1.19 document (Modbus RTU Protocol, 20220223)
-#     received directly from Deye technical support — primary source for
-#     units, ranges and R/W flags.
-#   - StephanJoubert/home_assistant_solarman (deye_hybrid.yaml)
-#   - slipx06/Sunsynk-Home-Assistant-Dash (ESPHome-1P config)
-#   - Community field reports for SUN-*K-SG05LP1-EU family
-#
-# ⚠️ Register 130 (Grid Export Limit): community-sourced address,
-#    not explicitly confirmed in the V1.19 doc for this specific model.
-#    Verify by reading the current value before first write.
-#
-# Confirmed safe to read+write (low risk, bounded failure):
-#   131 — Max charge current
-#   135 — Max discharge current
-#   138 — Grid charge enable
-#
-# Requires: deye_slow modbus_controller defined in the main config
-# (uses modbus_controller_id: deye, same address 0x01)
-#
-# ESPHome 2026.9.0+ required (skip_updates was removed in this version)
-
-esphome:
-  name: deye-inversor-write
-  friendly_name: Deye Inversor Write Controls
-
-# No wifi/api/ota needed — this is included as a PACKAGE into the
-# main deye-inversor device. All network config comes from the parent.
-
-modbus:
-  id: modbus1  # share UART bus with main config
-
-modbus_controller:
-  - id: deye
-    # shares the same modbus_id and address as the main config
-    # IMPORTANT: do NOT re-declare the UART here — only reference
-    # the existing modbus_controller by id.
-    address: 0x01
-    modbus_id: modbus1
-    setup_priority: -10
-    update_interval: 60s   # writes don't need fast polling
-    command_throttle: 100ms  # throttle writes more aggressively
-    offline_skip_updates: 3
-
-# ============================================================
-# Number entities — slider controls for register values
-# ============================================================
+# Not implemented on purpose:
+#   - Register 43 (on/off) and 20 (remote lock): on the tested unit they read
+#     0 and 255 while the inverter is running, which does not match the
+#     documented values (1 = on; 0 = unlocked / 2 = locked). Until their
+#     meaning is confirmed there is NO on/off control here.
+#   - Max charge / discharge current, export limit, grid charge enable,
+#     work mode: see docs/registers.md for the V1.19 addresses (210, 211,
+#     245, 232, 243). Not exercised on hardware, so not shipped.
 
 number:
-  # Register 130 — Grid export limit (0–10 000 W)
-  # 0 = no limit (unrestricted export)
-  # At 10 000 W the inverter caps exported power at 10 kW
-  # Safe to test: a value outside range simply rejects; no inverter fault
+  # Register 272 — Time-of-Use slot 5 target SOC (%).
+  # Clamped to 20-90 % so a typo can neither drain nor force-fill the battery.
   - platform: modbus_controller
-    modbus_controller_id: deye
-    name: "Deye Grid Export Limit"
-    address: 130
+    modbus_controller_id: deye_cfg
+    id: prog5_soc_w
+    name: "Deye TOU Slot 5 SOC"
+    address: 272
     register_type: holding
     value_type: U_WORD
-    unit_of_measurement: "W"
-    min: 0
-    max: 10000
-    step: 100
-    mode: box
-    lambda: "return value;"
-
-  # Register 131 — Battery max charge current (raw 0–200 = 0–20 A)
-  # Display is scaled ×0.1 so the slider reads 0–20 A
-  # Write value = slider_value × 10 (e.g. 10 A → write 100)
-  # Check your battery specs before setting above 100A (10A per 48V battery)
-  - platform: modbus_controller
-    modbus_controller_id: deye
-    name: "Deye Max Charge Current"
-    address: 131
-    register_type: holding
-    value_type: U_WORD
-    unit_of_measurement: "A"
-    min: 0
-    max: 200
+    min_value: 20
+    max_value: 90
     step: 1
+    unit_of_measurement: "%"
+    use_write_multiple: true
     mode: box
-    accuracy_decimals: 1
-    filters:
-      - multiply: 0.1
-    lambda: "return value;"
+    entity_category: config
 
-  # Register 135 — Battery max discharge current (raw 0–200 = 0–20 A)
-  # Same scaling as register 131
+  # Register 278 — Time-of-Use slot 5 charge flags. Internal only: it can
+  # hold 4 (bit2 set, grid charge off) or 5 (bit0 grid charge + bit2).
+  # Driven exclusively by the template switch below.
   - platform: modbus_controller
-    modbus_controller_id: deye
-    name: "Deye Max Discharge Current"
-    address: 135
+    modbus_controller_id: deye_cfg
+    id: prog5_flags_w
+    internal: true
+    address: 278
     register_type: holding
     value_type: U_WORD
-    unit_of_measurement: "A"
-    min: 0
-    max: 200
+    min_value: 4
+    max_value: 5
     step: 1
-    mode: box
-    accuracy_decimals: 1
-    filters:
-      - multiply: 0.1
-    lambda: "return value;"
-
-# ============================================================
-# Switch entities — binary on/off controls
-# ============================================================
+    use_write_multiple: true
 
 switch:
-  # Register 138 — Grid charging enable (0 = disabled, 1 = enabled)
-  # WARNING: enabling grid charge allows the inverter to pull from the
-  # grid to charge the battery. This can significantly increase energy
-  # costs if left on unintentionally. Default on most Deye inverters is
-  # usually 0 (disabled).
-  - platform: modbus_controller
-    modbus_controller_id: deye
-    name: "Deye Grid Charge Enable"
-    address: 138
-    register_type: holding
-    bitmask: 1
-    invert: false
-
-  # Register 59 — Work mode (NOT included by default)
-  # Values vary wildly between firmware versions. Common values:
-  #   2  = Grid-tied (default)
-  #   10 = Backup / UPS
-  #   15 = Force grid charge
-  #   17 = Force discharge
-  #   20 = Battery standby
-  # Only uncomment and use after manually verifying your firmware's
-  # register 59 encoding. Writing the wrong value can trigger grid
-  # protection or cut inverter output.
-  # - platform: modbus_controller
-  #   modbus_controller_id: deye
-  #   name: "Deye Work Mode"
-  #   address: 59
-  #   register_type: holding
-  #   value_type: U_WORD
-  #   bitmask: 0xFF
+  # Grid charge for TOU slot 5 = bit0 of register 278.
+  # State comes from the read-only mirror (prog5_flags_r, updated every
+  # 120 s), so after a toggle the switch shows the inverter's real value
+  # on the next settings poll.
+  - platform: template
+    id: prog5_grid_w
+    name: "Deye TOU Slot 5 Grid Charge"
+    entity_category: config
+    lambda: |-
+      if (isnan(id(prog5_flags_r).state)) return {};
+      return ((int) id(prog5_flags_r).state & 0x01) == 1;
+    turn_on_action:
+      - lambda: |-
+          int cur = (int) id(prog5_flags_r).state;
+          if (cur == 4 || cur == 5) { auto c = id(prog5_flags_w).make_call(); c.set_value(5); c.perform(); }
+          else ESP_LOGW("deye_write", "refused: slot 5 flags=%d (expected 4 or 5)", cur);
+    turn_off_action:
+      - lambda: |-
+          int cur = (int) id(prog5_flags_r).state;
+          if (cur == 4 || cur == 5) { auto c = id(prog5_flags_w).make_call(); c.set_value(4); c.perform(); }
+          else ESP_LOGW("deye_write", "refused: slot 5 flags=%d (expected 4 or 5)", cur);

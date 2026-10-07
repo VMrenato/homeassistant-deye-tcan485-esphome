@@ -50,6 +50,38 @@ Distilled from several days of bring-up against a live Deye SUN-6K-SG05LP1-EU-AM
 
 **Fix:** use 150 (×0.1) for grid voltage and 79 (×0.01) for frequency, as in the YAML — don't use 152.
 
+## 6. Wrong register map (three-phase document)
+
+**Symptom:** registers read nonsense or zeros; addresses from a Deye document don't match what the inverter returns.
+
+**Cause:** Deye ships several Modbus documents. The *three-phase* address list (SG04LP3 / SG01HP3 family) uses a different map and is **wrong for the single-phase SUN-*K-SG05LP1** units.
+
+**Fix:** use the single-phase document — *Modbus RTU Protocol — Energy Storage / String / Micro-inverter, V1.19* — which is what [registers.md](registers.md) follows. The inverter reports protocol `0x0201` in register 2 and the V1.19 map still matches.
+
+## 7. A write does nothing / log says "broadcast refused function 0x4"
+
+**Symptom:** a `modbus_controller` switch with a `write_lambda` appears to fire, but the register never changes; the log shows a refused custom/broadcast frame.
+
+**Cause:** a `write_lambda` that pushes bytes into `payload` makes ESPHome send them as a **raw custom frame**, not as a register write. Deye also expects settings to be written with **function 0x10** (Write Multiple Registers).
+
+**Fix:** use a `modbus_controller` `number` with `min_value` / `max_value` clamps and `use_write_multiple: true`, and — if you need an on/off control — a `template` switch that calls that number (see [`esphome/deye-inversor-write.yaml`](../esphome/deye-inversor-write.yaml)). Always confirm a write by reading the register back and checking the LCD.
+
+## 8. On/off (43) and remote lock (20) read unexpected values
+
+**Symptom:** register 43 reads `0` and register 20 reads `255` while the inverter is clearly running.
+
+**Cause:** unknown — these values don't match the V1.19 document (43: 1 = on; 20: 0 = unlocked, 2 = locked).
+
+**Fix:** treat both as **unverified**. They are mirrored read-only for diagnostics; this project deliberately ships no on/off control until their meaning is confirmed.
+
+## 9. PV total lags or jumps after adding publish filters
+
+**Symptom:** after adding `throttle` / `delta` filters to PV1/PV2 power, the PV total template is stale or steps oddly.
+
+**Cause:** the template reads `.state`, which is the already-filtered (throttled) value.
+
+**Fix:** read `.raw_state` in templates that combine filtered sensors: `return id(pv1_power).raw_state + id(pv2_power).raw_state;`
+
 ## Quick diagnostic checklist
 
 1. Are `RS485 EN`, `RS485 SE`, `Booster 5V EN` switches all ON?
