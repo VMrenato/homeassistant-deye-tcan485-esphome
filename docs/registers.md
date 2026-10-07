@@ -48,8 +48,12 @@ All registers are **holding registers** (function code 0x03) on Modbus RTU slave
 | Deye Grid Frequency | 79 | U_WORD | ×0.01 (5002 = 50.02 Hz) | Hz | 5 |
 | Deye Daily Energy Bought | 76 | U_WORD | ×0.1 | kWh | 5 |
 | Deye Daily Energy Sold | 77 | U_WORD | ×0.1 | kWh | 5 |
-| Deye Total Grid Import | 78 | U_WORD | ×0.1 | kWh | 5 |
-| Deye Total Grid Export | 81 | U_WORD | ×0.1 | kWh | 5 |
+| *(total_grid_import_lo, internal)* | 78 | U_WORD | low word | — | 5 |
+| *(total_grid_import_hi, internal)* | 80 | U_WORD | high word | — | 5 |
+| **Deye Total Grid Import** (template) | 78+80 | — | `(lo + hi × 65536) × 0.1` | kWh | — |
+| *(total_grid_export_lo, internal)* | 81 | U_WORD | low word | — | 5 |
+| *(total_grid_export_hi, internal)* | 82 | U_WORD | high word | — | 5 |
+| **Deye Total Grid Export** (template) | 81+82 | — | `(lo + hi × 65536) × 0.1` | kWh | — |
 
 > **Note:** grid voltage is register **150** at ×0.1. Register 152 is *not* the right source — using it gives a 0 Hz frequency / wrongly scaled voltage. See [troubleshooting](troubleshooting.md).
 
@@ -93,7 +97,9 @@ Deye stores cumulative energy counters as 32-bit values in two consecutive 16-bi
 lambda: "return (id(total_production_lo).state + id(total_production_hi).state * 65536.0) * 0.1;"
 ```
 
-This applies to registers 96–97 (total production), 72–73 (total battery charge), 74–75 (total battery discharge) and 85–86 (total load consumption). Total grid import (78) and export (81) fit in a single word on this model and are read directly.
+This applies to registers 96–97 (total production), 72–73 (total battery charge), 74–75 (total battery discharge), 85–86 (total load consumption), **78 + 80 (total grid import)** and **81–82 (total grid export)**.
+
+> **Note:** the grid-import words are *not* adjacent — register 79 (grid frequency) sits between the low word (78) and the high word (80). Earlier versions of this config read only the low words 78 and 81; those values wrap back to 0 after 6 553.6 kWh. Since the entity names are unchanged, Home Assistant keeps the same entities and history; `total_increasing` handles the switch cleanly as long as your counters are still below that limit.
 
 ## Settings mirror (read-only, `deye_cfg`)
 

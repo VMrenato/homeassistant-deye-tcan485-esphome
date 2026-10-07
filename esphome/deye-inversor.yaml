@@ -716,31 +716,59 @@ sensor:
     filters:
       - multiply: 0.1
 
+  # 32-bit counter, low word first: 78 (low) / 80 (high). A single
+  # word at x0.1 kWh would wrap at 6553.6 kWh.
   - platform: modbus_controller
     modbus_controller_id: deye_slow
-    name: "Deye Total Grid Import"
+    id: total_grid_import_lo
     address: 78
     register_type: holding
     value_type: U_WORD
-    unit_of_measurement: "kWh"
-    device_class: energy
-    state_class: total_increasing
-    accuracy_decimals: 2
-    filters:
-      - multiply: 0.1
+    internal: true
 
   - platform: modbus_controller
     modbus_controller_id: deye_slow
-    name: "Deye Total Grid Export"
-    address: 81
+    id: total_grid_import_hi
+    address: 80
     register_type: holding
     value_type: U_WORD
+    internal: true
+
+  - platform: template
+    name: "Deye Total Grid Import"
     unit_of_measurement: "kWh"
     device_class: energy
     state_class: total_increasing
-    accuracy_decimals: 2
-    filters:
-      - multiply: 0.1
+    accuracy_decimals: 1
+    update_interval: 60s
+    lambda: "return (id(total_grid_import_lo).state + id(total_grid_import_hi).state * 65536.0) * 0.1;"
+
+  # 32-bit counter, low word first: 81 (low) / 82 (high). A single
+  # word at x0.1 kWh would wrap at 6553.6 kWh.
+  - platform: modbus_controller
+    modbus_controller_id: deye_slow
+    id: total_grid_export_lo
+    address: 81
+    register_type: holding
+    value_type: U_WORD
+    internal: true
+
+  - platform: modbus_controller
+    modbus_controller_id: deye_slow
+    id: total_grid_export_hi
+    address: 82
+    register_type: holding
+    value_type: U_WORD
+    internal: true
+
+  - platform: template
+    name: "Deye Total Grid Export"
+    unit_of_measurement: "kWh"
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 1
+    update_interval: 60s
+    lambda: "return (id(total_grid_export_lo).state + id(total_grid_export_hi).state * 65536.0) * 0.1;"
 
   # ---------- Load ----------
   - platform: modbus_controller
