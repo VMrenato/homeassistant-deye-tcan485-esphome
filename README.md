@@ -8,10 +8,12 @@ Deye's newer WiBLE plug-and-play loggers **block local access entirely** (port 8
 
 ## Features
 
-- **Two-tier polling** ~5 s for fast-changing values (PV/battery/grid/load power, SOC, grid-connected), ~30 s for slow-changing ones (voltages, currents, temperatures, daily/total energy) — 35 Modbus sensors + 6 template sensors
+- **Three-tier polling** ~5 s for fast-changing values (PV/battery/grid/load power, SOC, grid-connected), ~30 s for slow-changing ones (voltages, currents, temperatures, daily/total energy), ~120 s for the read-only settings mirror — 35 live-data Modbus sensors + 6 template sensors + 34 read-only settings entities
 - **Battery health** — cycle count (BMS) and battery status (charge/discharge/idle state)
 - **Load voltage monitoring** — house voltage from register 157
-- **Optional write controls** via [`esphome/deye-inversor-write.yaml`](esphome/deye-inversor-write.yaml): grid export limit, max charge/discharge current, grid charge toggle — opt-in only, shipped as a separate file
+- **Read-only settings mirror** — a third controller (120 s) shows the inverter's current configuration in Home Assistant: device info / firmware (regs 0–19), battery shutdown/restart/low SOC, grid-charge current and enable, and the full Time-of-Use program (6 slots: start time, power, SOC, charge flags)
+- **Database-friendly publishing** — power sensors poll every 5 s but only publish on a ≥ 25 W change or once a minute
+- **Optional, hardware-verified write controls** via [`esphome/deye-inversor-write.yaml`](esphome/deye-inversor-write.yaml): Time-of-Use slot 5 target SOC and slot 5 grid-charge flag — range-clamped, function 0x10, opt-in only, shipped as a separate file
 - **Grid-connected binary sensor** (register 194, relay state) — detect grid loss / ATS transfer to backup and trigger automations
 - **WS2812 activity LED** on the board: blue flash = TX (request), green flash = RX (response) — instant visual confirmation the bus is alive
 - **Home Assistant auto-discovery** via the native ESPHome API — every entity appears with proper device/state classes, ready for the Energy dashboard
@@ -65,7 +67,7 @@ The inverter is a Modbus RTU slave at **address 1, 9600 8N1**. Full details in [
 
 ## Register map
 
-The config polls 33 Modbus registers (holding registers, slave 1): PV power/voltage/production, battery SOC/power/voltage/current/temperature/charge/discharge/cycle-count, grid power/CT/voltage/frequency/import/export, load power/voltage/consumption, inverter power and DC/AC temperatures — plus a grid-connected binary sensor on register 194.
+The config polls 33 live-data Modbus registers (holding registers, slave 1): PV power/voltage/production, battery SOC/power/voltage/current/temperature/charge/discharge/cycle-count, grid power/CT/voltage/frequency/import/export, load power/voltage/consumption, inverter power and DC/AC temperatures — plus a grid-connected binary sensor on register 194, and a read-only mirror of the configuration registers (0–20, 43, 217–219, 230, 232, 248–279).
 
 Deye 32-bit energy totals are **low-word-first**: the YAML reads the lo/hi words separately and combines them in template sensors, e.g. total production = `(lo + hi × 65536) × 0.1` kWh.
 
@@ -80,18 +82,14 @@ The short version of a multi-day debugging journey:
 - **Truncated frames / mid-frame byte loss** → cheap generic 5 V MAX485 modules. Avoid them; use the T-CAN485 (or a 3.3 V-native MAX3485).
 - **Boot loop / rollback after OTA** → don't touch or reset the device for ~90 s after an OTA flash (`safe_mode` marks the boot successful after 60 s).
 - **Grid frequency 0 / grid voltage off by 10×** → grid voltage is register **150** at ×0.1 (2377 = 237.7 V); don't use register 152.
+- **Registers don't match the document** → you're using Deye's three-phase address list; the SG05LP1 needs the single-phase V1.19 map.
+- **A write does nothing** → don't build raw frames in a `write_lambda`; use a range-limited `number` with function 0x10 (`use_write_multiple: true`).
 
 Upgrading from ESPHome < 2026.9.0 and slow sensors stop updating / config fails to compile → per-sensor skip_updates was removed in 2026.9.0. This config now uses a second modbus_controller (deye_slow, same address, 30 s interval, same command_throttle) for the slow-changing sensors instead. If you forked this repo before that change, pull the latest esphome/deye-inversor.yaml.
 
-## Writeable registers (opt-in, ⚠️ untested)
+## Writeable registers (opt-in, ⚠️ use at your own risk)
 
-> **⚠️ DISCLAIMER — UNTESTED — USE AT YOUR OWN RISK**
->
-> These registers have **not been tested on real hardware**. Values and ranges are assembled from community sources and cross-referenced documentation. They may be incomplete, incorrect, or cause unexpected inverter behaviour. **All risk is entirely yours.**
-
-A separate file [`esphome/deye-inversor-write.yaml`](esphome/deye-inversor-write.yaml) exposes write controls for selected registers. These are **NOT included** in the main config — they must be explicitly added.
-
-To use: include the write file alongside the read config in your ESPHome device:
+A separate file [`esphome/deye-inversor-write.yaml`](esphome/deye-inversor-write.yaml) adds write controls. They are **NOT included** in the main config — add them explicitly:
 
 ```yaml
 packages:
@@ -99,19 +97,23 @@ packages:
   deye_write: !include esphome/deye-inversor-write.yaml
 ```
 
-Available controls:
-
 | Control | Register | Notes |
 |---------|----------|-------|
-| Grid Export Limit | 130 | 0–10 000 W |
-| Max Charge Current | 131 | 0–20 A (display), raw ×0.1 |
-| Max Discharge Current | 135 | 0–20 A (display), raw ×0.1 |
-| Grid Charge Enable | 138 | binary on/off |
+| Deye TOU Slot 5 SOC | 272 | 20–90 %, clamped |
+| Deye TOU Slot 5 Grid Charge | 278 bit0 | Template switch; writes only 4 ↔ 5 and refuses if the register holds anything else |
+
+Both were **verified on a SUN-6K-SG05LP1-EU-AM2-P** — Modbus read-back and the inverter LCD. Copy the pattern for other slots (SOC = 267 + *N*, flags = 273 + *N*).
+
+How the writes are made safe:
+
+1. **Read first** — the main config mirrors every Time-of-Use register read-only, so you see the current values before you change anything.
+2. **Function 0x10** (`use_write_multiple: true`) — what Deye expects for settings.
+3. **Range-limited `number` entities** — out-of-range values are rejected by ESPHome before they reach the bus.
+4. **No raw `write_lambda` frames** — they are sent as custom frames, not register writes.
+5. **No on/off control** — registers 43 and 20 read values that don't match the documentation, so they are mirrored read-only only.
 
 > [!WARNING]
-> Always read a register's current value before writing. Test on a non-production system first. Writing the wrong value to register 59 (work mode) can trigger grid-protection faults — that register is not included.
-
-Full details and safety notes: [`esphome/deye-inversor-write.yaml`](esphome/deye-inversor-write.yaml).
+> Earlier versions of the write file used registers 130/131/135/138 (export limit, charge/discharge current, grid charge). Those addresses are **not in the official V1.19 map** for this family and were removed. The documented addresses (210, 211, 232, 243, 245, …) are listed in [docs/registers.md](docs/registers.md#writeable-registers) but have not been tested on hardware.
 
 Full details: **[docs/troubleshooting.md](docs/troubleshooting.md)**.
 

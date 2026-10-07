@@ -11,6 +11,17 @@
 # migrated to a second modbus_controller (`deye_slow`, same address, 30s
 # interval) instead. Fast sensors (instantaneous power, SOC, grid-connected)
 # stay on the original 5s controller.
+#
+# Publish filters: instantaneous power sensors are polled every 5 s but only
+# published on a change >= 25 W or at least once a minute (throttle/delta),
+# which cuts Home Assistant database writes without losing responsiveness.
+# Templates that add filtered sensors use `.raw_state`, not `.state`.
+#
+# Settings mirror: a third controller (`deye_cfg`, 120 s) reads the inverter's
+# configuration registers (device info, battery SOC thresholds, grid charge,
+# Time-of-Use program 1-6) READ-ONLY, so you can see the current settings in
+# Home Assistant before ever writing anything. Write controls live in the
+# separate, opt-in esphome/deye-inversor-write.yaml.
 
 esphome:
   name: deye-inversor
@@ -69,6 +80,15 @@ modbus_controller:
     command_throttle: 50ms
     offline_skip_updates: 3
 
+  # Settings mirror (READ-ONLY): configuration registers change rarely.
+  - id: deye_cfg
+    modbus_id: modbus1
+    address: 0x01
+    setup_priority: -10
+    update_interval: 120s
+    command_throttle: 50ms
+    offline_skip_updates: 3
+
 switch:
   - platform: gpio
     pin: GPIO19
@@ -84,6 +104,288 @@ switch:
     restore_mode: ALWAYS_ON
 
 sensor:
+  # ---------- Settings mirror (read-only, deye_cfg) ----------
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Remote lock"
+    address: 20
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Device type"
+    address: 0
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Inverter enabled"
+    address: 43
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Battery shutdown SOC"
+    address: 217
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    unit_of_measurement: "%"
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Battery restart SOC"
+    address: 218
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    unit_of_measurement: "%"
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Battery low SOC"
+    address: 219
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    unit_of_measurement: "%"
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Grid charge current"
+    address: 230
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    unit_of_measurement: "A"
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Grid charge enabled"
+    address: 232
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Use timer"
+    address: 248
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog1 time"
+    address: 250
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog1 power"
+    address: 256
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    unit_of_measurement: "W"
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog1 SOC"
+    address: 268
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    unit_of_measurement: "%"
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog1 flags"
+    address: 274
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog2 time"
+    address: 251
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog2 power"
+    address: 257
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    unit_of_measurement: "W"
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog2 SOC"
+    address: 269
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    unit_of_measurement: "%"
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog2 flags"
+    address: 275
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog3 time"
+    address: 252
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog3 power"
+    address: 258
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    unit_of_measurement: "W"
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog3 SOC"
+    address: 270
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    unit_of_measurement: "%"
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog3 flags"
+    address: 276
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog4 time"
+    address: 253
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog4 power"
+    address: 259
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    unit_of_measurement: "W"
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog4 SOC"
+    address: 271
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    unit_of_measurement: "%"
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog4 flags"
+    address: 277
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog5 time"
+    address: 254
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog5 power"
+    address: 260
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    unit_of_measurement: "W"
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog5 SOC"
+    address: 272
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    unit_of_measurement: "%"
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    id: prog5_flags_r
+    name: "Deye Cfg Prog5 flags"
+    address: 278
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog6 time"
+    address: 255
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog6 power"
+    address: 261
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    unit_of_measurement: "W"
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog6 SOC"
+    address: 273
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    unit_of_measurement: "%"
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Prog6 flags"
+    address: 279
+    register_type: holding
+    value_type: U_WORD
+    accuracy_decimals: 0
+    entity_category: diagnostic
   # ---------- Solar ----------
   - platform: modbus_controller
     modbus_controller_id: deye
@@ -95,6 +397,10 @@ sensor:
     unit_of_measurement: "W"
     device_class: power
     state_class: measurement
+    filters:
+      - or:
+          - throttle: 60s   # heartbeat at least once a minute
+          - delta: 25       # or immediately on a change >= 25 W
 
   - platform: modbus_controller
     modbus_controller_id: deye
@@ -106,6 +412,10 @@ sensor:
     unit_of_measurement: "W"
     device_class: power
     state_class: measurement
+    filters:
+      - or:
+          - throttle: 60s   # heartbeat at least once a minute
+          - delta: 25       # or immediately on a change >= 25 W
 
   - platform: template
     id: pv_total_power
@@ -114,7 +424,11 @@ sensor:
     device_class: power
     state_class: measurement
     update_interval: 10s
-    lambda: "return id(pv1_power).state + id(pv2_power).state;"
+    lambda: "return id(pv1_power).raw_state + id(pv2_power).raw_state;"
+    filters:
+      - or:
+          - throttle: 60s   # heartbeat at least once a minute
+          - delta: 25       # or immediately on a change >= 25 W
 
   - platform: modbus_controller
     modbus_controller_id: deye_slow
@@ -200,6 +514,10 @@ sensor:
     unit_of_measurement: "W"
     device_class: power
     state_class: measurement
+    filters:
+      - or:
+          - throttle: 60s   # heartbeat at least once a minute
+          - delta: 25       # or immediately on a change >= 25 W
 
   - platform: modbus_controller
     modbus_controller_id: deye_slow
@@ -327,6 +645,10 @@ sensor:
     unit_of_measurement: "W"
     device_class: power
     state_class: measurement
+    filters:
+      - or:
+          - throttle: 60s   # heartbeat at least once a minute
+          - delta: 25       # or immediately on a change >= 25 W
 
   - platform: modbus_controller
     modbus_controller_id: deye
@@ -337,6 +659,10 @@ sensor:
     unit_of_measurement: "W"
     device_class: power
     state_class: measurement
+    filters:
+      - or:
+          - throttle: 60s   # heartbeat at least once a minute
+          - delta: 25       # or immediately on a change >= 25 W
 
   - platform: modbus_controller
     modbus_controller_id: deye_slow
@@ -426,6 +752,10 @@ sensor:
     unit_of_measurement: "W"
     device_class: power
     state_class: measurement
+    filters:
+      - or:
+          - throttle: 60s   # heartbeat at least once a minute
+          - delta: 25       # or immediately on a change >= 25 W
 
   - platform: modbus_controller
     modbus_controller_id: deye_slow
@@ -488,6 +818,10 @@ sensor:
     unit_of_measurement: "W"
     device_class: power
     state_class: measurement
+    filters:
+      - or:
+          - throttle: 60s   # heartbeat at least once a minute
+          - delta: 25       # or immediately on a change >= 25 W
 
   - platform: modbus_controller
     modbus_controller_id: deye_slow
@@ -568,3 +902,15 @@ binary_sensor:
     address: 194
     register_type: holding
     device_class: plug
+
+# Raw device-info block (registers 0-19) as hex, for firmware / model identification.
+text_sensor:
+  - platform: modbus_controller
+    modbus_controller_id: deye_cfg
+    name: "Deye Cfg Info raw 0-19"
+    address: 0
+    register_type: holding
+    register_count: 20
+    response_size: 40
+    raw_encode: HEXBYTES
+    entity_category: diagnostic
